@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Лара ТВ</title>
+
+<style>
+body { margin:0; font-family:sans-serif; background:#0f172a; color:#fff; }
+header { padding:15px; text-align:center; font-size:24px; background:#020617; }
+.container { max-width:900px; margin:auto; padding:15px; }
+.card { background:#1e293b; padding:15px; border-radius:15px; margin-bottom:20px; }
+.card img { width:100%; border-radius:10px; }
+button { padding:8px 12px; margin:5px; border:none; border-radius:8px; cursor:pointer; }
+.admin { display:none; margin-top:20px; }
+input, textarea { width:100%; margin:5px 0; padding:10px; border-radius:8px; }
+</style>
+</head>
+
+<body>
+
+<header>Лара ТВ</header>
+
+<div class="container">
+
+<div id="login">
+  <h3>Вход в админку</h3>
+  <input id="loginInput" placeholder="Логин">
+  <input id="passInput" type="password" placeholder="Пароль">
+  <button onclick="login()">Войти</button>
+</div>
+
+<div class="admin" id="adminPanel">
+  <h3>Админ панель</h3>
+  <input id="title" placeholder="Заголовок">
+  <textarea id="content" placeholder="Текст"></textarea>
+  <input type="file" id="image">
+  <button onclick="addNews()">Опубликовать</button>
+</div>
+
+<div id="news"></div>
+
+</div>
+
+<script>
+let token = '';
+
+async function login() {
+  const res = await fetch('/api/login', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      login: loginInput.value,
+      password: passInput.value
+    })
+  });
+
+  if(res.ok){
+    const data = await res.json();
+    token = data.token;
+    adminPanel.style.display = 'block';
+    login.style.display = 'none';
+  } else alert('Ошибка');
+}
+
+async function loadNews(){
+  const res = await fetch('/api/news');
+  const data = await res.json();
+
+  news.innerHTML='';
+  data.forEach(n=>{
+    const div=document.createElement('div');
+    div.className='card';
+
+    div.innerHTML=`
+      <h2>${n.title}</h2>
+      ${n.image?`<img src="${n.image}">`:''}
+      <p>${n.content}</p>
+      <small>${n.date}</small><br>
+      ❤️ ${n.likes}
+      <button onclick="like(${n.id})">Лайк</button>
+      <button onclick="del(${n.id})">Удалить</button>
+
+      <div>
+        <input placeholder="Комментарий" id="c${n.id}">
+        <button onclick="comment(${n.id})">Отправить</button>
+      </div>
+
+      <div>${n.comments.map(c=>`<p>💬 ${c}</p>`).join('')}</div>
+    `;
+
+    news.appendChild(div);
+  });
+}
+
+async function addNews(){
+  const fd=new FormData();
+  fd.append('title',title.value);
+  fd.append('content',content.value);
+  fd.append('image',image.files[0]);
+
+  await fetch('/api/news',{
+    method:'POST',
+    headers:{authorization:token},
+    body:fd
+  });
+
+  loadNews();
+}
+
+async function del(id){
+  await fetch('/api/news/'+id,{
+    method:'DELETE',
+    headers:{authorization:token}
+  });
+  loadNews();
+}
+
+async function like(id){
+  await fetch('/api/news/'+id+'/like',{method:'POST'});
+  loadNews();
+}
+
+async function comment(id){
+  const text=document.getElementById('c'+id).value;
+  await fetch('/api/news/'+id+'/comment',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({text})
+  });
+  loadNews();
+}
+
+loadNews();
+</script>
+
+</body>
+</html>
