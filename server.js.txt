@@ -1,0 +1,98 @@
+const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+app.use(express.static('public'));
+
+// === АДМИН ДАННЫЕ ===
+const ADMIN_LOGIN = "admin";
+const ADMIN_PASSWORD = "1234";
+let sessions = {};
+
+app.post('/api/login', (req, res) => {
+  const { login, password } = req.body;
+  if (login === ADMIN_LOGIN && password === ADMIN_PASSWORD) {
+    const token = Date.now().toString();
+    sessions[token] = true;
+    return res.json({ token });
+  }
+  res.status(401).json({ error: 'Неверные данные' });
+});
+
+function auth(req, res, next) {
+  const token = req.headers['authorization'];
+  if (sessions[token]) return next();
+  res.status(403).json({ error: 'Нет доступа' });
+}
+
+// === ЗАГРУЗКА ФОТО ===
+const storage = multer.diskStorage({
+  destination: './public/uploads/',
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage });
+
+const DATA_FILE = './news.json';
+
+function readNews() {
+  if (!fs.existsSync(DATA_FILE)) return [];
+  return JSON.parse(fs.readFileSync(DATA_FILE));
+}
+
+function saveNews(news) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(news, null, 2));
+}
+
+// === API ===
+app.get('/api/news', (req, res) => res.json(readNews()));
+
+app.post('/api/news', auth, upload.single('image'), (req, res) => {
+  const news = readNews();
+
+  const newItem = {
+    id: Date.now(),
+    title: req.body.title,
+    content: req.body.content,
+    image: req.file ? '/uploads/' + req.file.filename : null,
+    date: new Date().toLocaleString(),
+    likes: 0,
+    comments: []
+  };
+
+  news.unshift(newItem);
+  saveNews(news);
+
+  res.json({ success: true });
+});
+
+app.delete('/api/news/:id', auth, (req, res) => {
+  let news = readNews();
+  news = news.filter(n => n.id != req.params.id);
+  saveNews(news);
+  res.json({ success: true });
+});
+
+app.post('/api/news/:id/like', (req, res) => {
+  const news = readNews();
+  const item = news.find(n => n.id == req.params.id);
+  item.likes++;
+  saveNews(news);
+  res.json({ success: true });
+});
+
+app.post('/api/news/:id/comment', (req, res) => {
+  const news = readNews();
+  const item = news.find(n => n.id == req.params.id);
+  item.comments.push(req.body.text);
+  saveNews(news);
+  res.json({ success: true });
+});
+
+app.listen(PORT, () => console.log('Server running on port ' + PORT));
